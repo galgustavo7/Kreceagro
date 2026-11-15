@@ -39,6 +39,7 @@ import { SimulatorView } from './components/SimulatorView';
 import { CouponsView } from './components/CouponsView';
 import { CreditRequestFormView } from './components/CreditRequestFormView';
 import { PaymentModal } from './components/PaymentModal';
+import { BackupModal } from './components/BackupModal';
 import {
   ColdChainModal,
   ContractModal,
@@ -106,6 +107,7 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [coldChainOpen, setColdChainOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Sync dark class on <html>
@@ -402,6 +404,7 @@ export default function App() {
         onOpenReferral={() => setReferralOpen(true)}
         onOpenHelp={() => setHelpOpen(true)}
         onOpenTutorial={() => setTutorialOpen(true)}
+        onOpenBackup={() => setBackupOpen(true)}
         onOpenProfileModal={() => setProfileModalOpen(true)}
         isDark={state.isDark}
         onToggleTheme={() =>
@@ -543,6 +546,7 @@ export default function App() {
         onOpenReferral={() => setReferralOpen(true)}
         onOpenHelp={() => setHelpOpen(true)}
         onOpenTutorial={() => setTutorialOpen(true)}
+        onOpenBackup={() => setBackupOpen(true)}
         onOpenProfileModal={() => setProfileModalOpen(true)}
         isDark={state.isDark}
         onToggleTheme={() =>
@@ -588,6 +592,16 @@ export default function App() {
         isOpen={coldChainOpen}
         merchant={state.merchant}
         onClose={() => setColdChainOpen(false)}
+      />
+
+      <BackupModal
+        isOpen={backupOpen}
+        onClose={() => setBackupOpen(false)}
+        uid={authUser?.uid || 'demo-gustavo-01'}
+        merchant={state.merchant}
+        credits={state.credits}
+        coupons={state.coupons}
+        suppliers={SUPPLIERS_DATA}
       />
 
       {/* Merchant Profile Edit Modal */}

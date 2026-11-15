@@ -4,6 +4,7 @@ import {
   BookOpen,
   Calculator,
   ChevronRight,
+  Database,
   FilePlus2,
   HelpCircle,
   Home,
@@ -25,6 +26,7 @@ interface DesktopSidebarProps {
   onOpenReferral: () => void;
   onOpenHelp: () => void;
   onOpenTutorial: () => void;
+  onOpenBackup: () => void;
   onOpenProfileModal: () => void;
   isDark: boolean;
   onToggleTheme: () => void;
@@ -40,6 +42,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onOpenReferral,
   onOpenHelp,
   onOpenTutorial,
+  onOpenBackup,
   onOpenProfileModal,
   isDark,
   onToggleTheme,
@@ -119,6 +122,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             >
               <BookOpen className="w-4 h-4" />
               <span className="whitespace-nowrap">Ver tutorial</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenBackup}
+              className="w-full min-h-[44px] flex items-center gap-3 px-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+            >
+              <Database className="w-4 h-4" />
+              <span className="whitespace-nowrap">Respaldo SQL</span>
             </button>
           </div>
         </nav>

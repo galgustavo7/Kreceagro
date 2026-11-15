@@ -4,6 +4,7 @@ import {
   BookOpen,
   Calculator,
   ChevronRight,
+  Database,
   FilePlus2,
   HelpCircle,
   Home,
@@ -26,6 +27,7 @@ interface DrawerMenuProps {
   onOpenReferral: () => void;
   onOpenHelp: () => void;
   onOpenTutorial: () => void;
+  onOpenBackup: () => void;
   onOpenProfileModal: () => void;
   isDark: boolean;
   onToggleTheme: () => void;
@@ -42,6 +44,7 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
   onOpenReferral,
   onOpenHelp,
   onOpenTutorial,
+  onOpenBackup,
   onOpenProfileModal,
   isDark,
   onToggleTheme,
@@ -147,6 +150,18 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
             >
               <BookOpen className="w-5 h-5" />
               <span>Ver tutorial</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenBackup();
+              }}
+              className="w-full min-h-[48px] flex items-center gap-3.5 px-3 rounded-xl text-[15px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.05] transition-colors"
+            >
+              <Database className="w-5 h-5" />
+              <span>Respaldo SQL</span>
             </button>
           </div>
         </div>
