@@ -1,0 +1,8 @@
+{
+  "name": "KreceAgro — Crédito Avícola y Porcícola",
+  "description": "Aplicación móvil para la solicitud y gestión de microcréditos avícolas y porcícolas dirigida a emprendedores bodegueros, abastos y revendedores en zonas de alta demanda local.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
