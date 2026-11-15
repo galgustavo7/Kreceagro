@@ -7,8 +7,8 @@ import {
   FilePlus2,
   HelpCircle,
   Home,
+  LogOut,
   Moon,
-  RefreshCw,
   ShoppingBag,
   Store,
   Sun,
@@ -29,7 +29,8 @@ interface DrawerMenuProps {
   onOpenProfileModal: () => void;
   isDark: boolean;
   onToggleTheme: () => void;
-  onSwitchDemoRole: () => void;
+  onSignOutOrAuth: () => void;
+  isDemoMode: boolean;
   merchant: MerchantProfile;
 }
 
@@ -44,7 +45,8 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
   onOpenProfileModal,
   isDark,
   onToggleTheme,
-  onSwitchDemoRole,
+  onSignOutOrAuth,
+  isDemoMode,
   merchant,
 }) => {
   if (!isOpen) return null;
@@ -186,11 +188,14 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
 
             <button
               type="button"
-              onClick={onSwitchDemoRole}
-              className="min-h-[44px] flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-teal-500"
+              onClick={() => {
+                onClose();
+                onSignOutOrAuth();
+              }}
+              className="min-h-[44px] flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-rose-500 cursor-pointer"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>Cambiar rubro</span>
+              <LogOut className="w-4 h-4" />
+              <span>{isDemoMode ? 'Iniciar sesión' : 'Salir'}</span>
             </button>
           </div>
         </div>

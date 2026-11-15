@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { X } from 'lucide-react';
 import {
   INITIAL_COUPONS,
@@ -6,6 +7,15 @@ import {
   INITIAL_MERCHANT,
   SUPPLIERS_DATA,
 } from './data/initialData';
+import { auth } from './firebase';
+import {
+  createCreditInFirestore,
+  ensureMerchantBootstrap,
+  RegistrationExtras,
+  subscribeMerchantData,
+  updateCreditInFirestore,
+  updateMerchantProfileInFirestore,
+} from './services/firestoreService';
 import {
   AppView,
   BusinessType,
@@ -17,6 +27,7 @@ import {
   MerchantProfile,
   Supplier,
 } from './types/credit';
+import { AuthScreen } from './components/AuthScreen';
 import { BottomNav } from './components/BottomNav';
 import { DesktopSidebar } from './components/DesktopSidebar';
 import { DrawerMenu } from './components/DrawerMenu';
@@ -46,6 +57,13 @@ interface PersistedState {
   isDark: boolean;
 }
 
+function computeTierFromPoints(points: number): string {
+  if (points >= 500) return 'Platino';
+  if (points >= 320) return 'Oro';
+  if (points >= 150) return 'Plata';
+  return 'Bronce';
+}
+
 export default function App() {
   const [state, setState] = useState<PersistedState>(() => {
     try {
@@ -63,6 +81,11 @@ export default function App() {
       isDark: true,
     };
   });
+
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const pendingExtrasRef = useRef<RegistrationExtras | undefined>(undefined);
 
   const [currentView, setCurrentView] = useState<AppView>('inicio');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -95,14 +118,62 @@ export default function App() {
     }
   }, [state.isDark]);
 
-  // Persist to localStorage
+  // Listen to Firebase Auth state
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+
+      if (user && user.emailVerified) {
+        setIsDemoMode(false);
+        await ensureMerchantBootstrap(user, pendingExtrasRef.current);
+        pendingExtrasRef.current = undefined;
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Subscribe to Firestore when authenticated and verified
+  useEffect(() => {
+    if (!authUser || !authUser.emailVerified || isDemoMode) return;
+
+    const unsub = subscribeMerchantData(
+      authUser.uid,
+      (profilePatch) => {
+        setState((prev) => ({
+          ...prev,
+          merchant: {
+            ...prev.merchant,
+            ...profilePatch,
+          },
+        }));
+      },
+      (firestoreCredits) => {
+        setState((prev) => ({
+          ...prev,
+          credits: firestoreCredits,
+        }));
+      },
+      (firestoreCoupons) => {
+        setState((prev) => ({
+          ...prev,
+          coupons: firestoreCoupons,
+        }));
+      }
+    );
+
+    return () => unsub();
+  }, [authUser, isDemoMode]);
+
+  // Persist demo state to localStorage when in demo mode
+  useEffect(() => {
+    if (!isDemoMode) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       // ignore storage errors
     }
-  }, [state]);
+  }, [state, isDemoMode]);
 
   const usedLine = useMemo(() => {
     return state.credits
@@ -126,7 +197,24 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleCreateCredit = (newCredit: CreditRecord, usedCouponId?: string) => {
+  const handleCreateCredit = async (
+    newCredit: CreditRecord,
+    usedCouponId?: string
+  ) => {
+    const newPoints = state.merchant.points + 35;
+    const newTier = computeTierFromPoints(newPoints);
+
+    if (authUser && authUser.emailVerified && !isDemoMode) {
+      await createCreditInFirestore(
+        authUser.uid,
+        newCredit,
+        newPoints,
+        newTier,
+        usedCouponId
+      );
+      return;
+    }
+
     setState((prev) => ({
       ...prev,
       credits: [newCredit, ...prev.credits],
@@ -137,12 +225,13 @@ export default function App() {
         : prev.coupons,
       merchant: {
         ...prev.merchant,
-        points: prev.merchant.points + 35,
+        points: newPoints,
+        tierName: newTier,
       },
     }));
   };
 
-  const handleConfirmPayments = (
+  const handleConfirmPayments = async (
     paidItems: Array<{ creditId: string; installmentId: string; amount: number }>
   ) => {
     const todayLabel = new Date().toLocaleDateString('es-VE', {
@@ -150,73 +239,143 @@ export default function App() {
       month: 'short',
     });
 
-    setState((prev) => {
-      const updatedCredits = prev.credits.map((credit) => {
-        const matchingPaid = paidItems.filter((p) => p.creditId === credit.id);
-        if (matchingPaid.length === 0) return credit;
+    const newPoints = state.merchant.points + paidItems.length * 18;
+    const newTier = computeTierFromPoints(newPoints);
 
-        const paidIds = new Set(matchingPaid.map((p) => p.installmentId));
-        const newInstallments = credit.installments.map((inst) =>
-          paidIds.has(inst.id) ? { ...inst, paid: true, paidDate: todayLabel } : inst
-        );
+    const updatedCredits = state.credits.map((credit) => {
+      const matchingPaid = paidItems.filter((p) => p.creditId === credit.id);
+      if (matchingPaid.length === 0) return credit;
 
-        const paidCount = newInstallments.filter((i) => i.paid).length;
-        const paidSum = newInstallments
-          .filter((i) => i.paid)
-          .reduce((acc, i) => acc + i.amount, 0);
-        const remainingSum = Math.max(0, credit.totalAmount - paidSum);
-        const nextUnpaid = newInstallments.find((i) => !i.paid);
+      const paidIds = new Set(matchingPaid.map((p) => p.installmentId));
+      const newInstallments = credit.installments.map((inst) =>
+        paidIds.has(inst.id) ? { ...inst, paid: true, paidDate: todayLabel } : inst
+      );
 
-        return {
-          ...credit,
-          installments: newInstallments,
-          paidInstallments: paidCount,
-          paidAmount: paidSum,
-          remainingAmount: remainingSum,
-          nextDueDate: nextUnpaid
-            ? nextUnpaid.dueLabel.split('· ')[1] || nextUnpaid.dueLabel
-            : 'Pagado',
-          status: remainingSum === 0 ? ('completed' as const) : ('active' as const),
-        };
-      });
+      const paidCount = newInstallments.filter((i) => i.paid).length;
+      const paidSum = newInstallments
+        .filter((i) => i.paid)
+        .reduce((acc, i) => acc + i.amount, 0);
+      const remainingSum = Math.max(0, credit.totalAmount - paidSum);
+      const nextUnpaid = newInstallments.find((i) => !i.paid);
 
       return {
-        ...prev,
-        credits: updatedCredits,
-        merchant: {
-          ...prev.merchant,
-          points: prev.merchant.points + paidItems.length * 18,
-        },
+        ...credit,
+        installments: newInstallments,
+        paidInstallments: paidCount,
+        paidAmount: paidSum,
+        remainingAmount: remainingSum,
+        nextDueDate: nextUnpaid
+          ? nextUnpaid.dueLabel.split('· ')[1] || nextUnpaid.dueLabel
+          : 'Pagado',
+        status: remainingSum === 0 ? ('completed' as const) : ('active' as const),
       };
     });
-  };
 
-  const handleToggleColdInsurance = (creditId: string) => {
+    if (authUser && authUser.emailVerified && !isDemoMode) {
+      const changedCreditIds = new Set(paidItems.map((p) => p.creditId));
+      for (const cred of updatedCredits) {
+        if (changedCreditIds.has(cred.id)) {
+          await updateCreditInFirestore(authUser.uid, cred, newPoints, newTier);
+        }
+      }
+      return;
+    }
+
     setState((prev) => ({
       ...prev,
-      credits: prev.credits.map((c) =>
-        c.id === creditId ? { ...c, coldChainInsured: !c.coldChainInsured } : c
-      ),
-    }));
-  };
-
-  const handleSwitchDemoRole = () => {
-    const order = [
-      BusinessType.BODEGA,
-      BusinessType.ABASTO,
-      BusinessType.REVENDEDOR,
-      BusinessType.FRIGORIFICO,
-    ];
-    const currentIndex = order.indexOf(state.merchant.businessType);
-    const nextRole = order[(currentIndex + 1) % order.length];
-    setState((prev) => ({
-      ...prev,
+      credits: updatedCredits,
       merchant: {
         ...prev.merchant,
-        businessType: nextRole,
+        points: newPoints,
+        tierName: newTier,
       },
     }));
   };
+
+  const handleToggleColdInsurance = async (creditId: string) => {
+    const target = state.credits.find((c) => c.id === creditId);
+    if (!target) return;
+    const updated = { ...target, coldChainInsured: !target.coldChainInsured };
+
+    if (authUser && authUser.emailVerified && !isDemoMode) {
+      if (target.status === 'completed') return;
+      await updateCreditInFirestore(authUser.uid, updated);
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      credits: prev.credits.map((c) => (c.id === creditId ? updated : c)),
+    }));
+  };
+
+  const handleSignOutOrAuth = async () => {
+    if (isDemoMode) {
+      setIsDemoMode(false);
+      return;
+    }
+    await signOut(auth);
+    setCurrentView('inicio');
+  };
+
+  const handleEnterDemoMode = () => {
+    setState((prev) => ({
+      ...prev,
+      merchant: INITIAL_MERCHANT,
+      credits: INITIAL_CREDITS,
+      coupons: INITIAL_COUPONS,
+    }));
+    setIsDemoMode(true);
+    setCurrentView('inicio');
+  };
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-[#F4F7F7] dark:bg-[#080B0B] flex items-center justify-center">
+        <div className="text-center space-y-2">
+          <span className="font-display text-3xl font-extrabold text-teal-600 dark:text-[#00D1C1]">
+            KreceAgro
+          </span>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Cargando tu cuenta comercial...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show AuthScreen when not in demo mode and not verified/signed in
+  if (!isDemoMode && (!authUser || !authUser.emailVerified)) {
+    return (
+      <AuthScreen
+        isDark={state.isDark}
+        onToggleTheme={() =>
+          setState((prev) => ({ ...prev, isDark: !prev.isDark }))
+        }
+        onEnterDemoMode={handleEnterDemoMode}
+        onRegisterSuccess={async (user, extras) => {
+          pendingExtrasRef.current = extras;
+          if (user.emailVerified) {
+            await ensureMerchantBootstrap(user, extras);
+          }
+        }}
+        verificationUser={authUser && !authUser.emailVerified ? authUser : null}
+        onRefreshVerification={async () => {
+          if (auth.currentUser) {
+            await auth.currentUser.reload();
+            const refreshed = auth.currentUser;
+            setAuthUser(refreshed ? ({ ...refreshed } as User) : null);
+            if (refreshed?.emailVerified) {
+              await ensureMerchantBootstrap(refreshed, pendingExtrasRef.current);
+            }
+          }
+        }}
+        onSignOut={async () => {
+          await signOut(auth);
+        }}
+      />
+    );
+  }
 
   const viewTitles: Record<AppView, string> = {
     inicio: `Hola, ${state.merchant.firstName}`,
@@ -248,6 +407,8 @@ export default function App() {
         onToggleTheme={() =>
           setState((prev) => ({ ...prev, isDark: !prev.isDark }))
         }
+        onSignOutOrAuth={handleSignOutOrAuth}
+        isDemoMode={isDemoMode}
         merchant={state.merchant}
       />
 
@@ -387,7 +548,8 @@ export default function App() {
         onToggleTheme={() =>
           setState((prev) => ({ ...prev, isDark: !prev.isDark }))
         }
-        onSwitchDemoRole={handleSwitchDemoRole}
+        onSignOutOrAuth={handleSignOutOrAuth}
+        isDemoMode={isDemoMode}
         merchant={state.merchant}
       />
 
@@ -538,7 +700,12 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => setProfileModalOpen(false)}
+              onClick={async () => {
+                if (authUser && authUser.emailVerified && !isDemoMode) {
+                  await updateMerchantProfileInFirestore(authUser.uid, state.merchant);
+                }
+                setProfileModalOpen(false);
+              }}
               className="w-full min-h-[46px] rounded-2xl bg-teal-600 dark:bg-[#00D1C1] text-white dark:text-[#041413] font-bold text-sm cursor-pointer"
             >
               Guardar cambios

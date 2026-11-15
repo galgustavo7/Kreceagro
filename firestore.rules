@@ -1,0 +1,227 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUserAccount(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'firstName', 'initials', 'businessName', 'businessType',
+          'zone', 'coldChain', 'points', 'tierName', 'creditLimit',
+          'referralCode', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'firstName', 'initials', 'businessName', 'businessType',
+          'zone', 'coldChain', 'points', 'tierName', 'creditLimit',
+          'referralCode', 'createdAt', 'updatedAt'
+        ])
+        && data.uid == userId
+        && isValidId(data.uid)
+        && data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 80
+        && data.initials is string && data.initials.size() >= 1 && data.initials.size() <= 4
+        && data.businessName is string && data.businessName.size() >= 2 && data.businessName.size() <= 120
+        && data.businessType in ['Bodega de Barrio', 'Abasto / Charcutería', 'Revendedor / Ruta', 'Mini Frigorífico']
+        && data.zone is string && data.zone.size() >= 2 && data.zone.size() <= 120
+        && data.coldChain in ['Cava cuarto propia', 'Congelador horizontal / vitrina', 'Venta diaria con hielo / rotación 24h']
+        && data.points is number && data.points >= 0 && data.points <= 100000
+        && data.tierName is string && data.tierName.size() >= 2 && data.tierName.size() <= 40
+        && data.creditLimit is number && data.creditLimit >= 0 && data.creditLimit <= 10000
+        && data.referralCode is string && data.referralCode.size() >= 4 && data.referralCode.size() <= 24
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateInfo(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'fullName', 'dni', 'address', 'seniority', 'phone', 'email', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'fullName', 'dni', 'address', 'seniority', 'phone', 'email', 'createdAt', 'updatedAt'
+        ])
+        && data.uid == userId
+        && isValidId(data.uid)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.dni is string && data.dni.size() >= 4 && data.dni.size() <= 32
+        && data.address is string && data.address.size() >= 4 && data.address.size() <= 220
+        && data.seniority is string && data.seniority.size() >= 2 && data.seniority.size() <= 60
+        && data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 32
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 140
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCredit(data, userId, creditId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'contractCode', 'title', 'subtitle', 'category',
+          'supplierId', 'supplierName', 'zone', 'totalAmount', 'initialPaid',
+          'paidAmount', 'remainingAmount', 'totalInstallments', 'paidInstallments',
+          'nextDueDate', 'status', 'coldChainInsured', 'dispatchCode',
+          'createdAtLabel', 'installments', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'contractCode', 'title', 'subtitle', 'category',
+          'supplierId', 'supplierName', 'zone', 'totalAmount', 'initialPaid',
+          'paidAmount', 'remainingAmount', 'totalInstallments', 'paidInstallments',
+          'nextDueDate', 'status', 'approvalStatus', 'coldChainInsured', 'weightKg',
+          'estimatedMarginPct', 'dispatchCode', 'createdAtLabel', 'installments',
+          'applicantDetails', 'createdAt', 'updatedAt'
+        ])
+        && data.id == creditId
+        && data.ownerId == userId
+        && isValidId(data.id)
+        && isValidId(data.ownerId)
+        && data.contractCode is string && data.contractCode.size() >= 4 && data.contractCode.size() <= 40
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 160
+        && data.subtitle is string && data.subtitle.size() >= 2 && data.subtitle.size() <= 160
+        && data.category in ['avicola', 'porcicola', 'mixto', 'capital']
+        && data.supplierId is string && data.supplierId.size() >= 1 && data.supplierId.size() <= 64
+        && data.supplierName is string && data.supplierName.size() >= 2 && data.supplierName.size() <= 140
+        && data.zone is string && data.zone.size() >= 2 && data.zone.size() <= 220
+        && data.totalAmount is number && data.totalAmount >= 0 && data.totalAmount <= 50000
+        && data.initialPaid is number && data.initialPaid >= 0
+        && data.paidAmount is number && data.paidAmount >= 0
+        && data.remainingAmount is number && data.remainingAmount >= 0
+        && data.totalInstallments is number && data.totalInstallments >= 1 && data.totalInstallments <= 12
+        && data.paidInstallments is number && data.paidInstallments >= 0 && data.paidInstallments <= 12
+        && data.nextDueDate is string && data.nextDueDate.size() >= 2 && data.nextDueDate.size() <= 40
+        && data.status in ['active', 'completed']
+        && (!('approvalStatus' in data) || data.approvalStatus in ['aprobado', 'en_revision'])
+        && data.coldChainInsured is bool
+        && (!('weightKg' in data) || (data.weightKg is number && data.weightKg >= 0 && data.weightKg <= 10000))
+        && (!('estimatedMarginPct' in data) || (data.estimatedMarginPct is number && data.estimatedMarginPct >= 0 && data.estimatedMarginPct <= 200))
+        && data.dispatchCode is string && data.dispatchCode.size() >= 4 && data.dispatchCode.size() <= 40
+        && data.createdAtLabel is string && data.createdAtLabel.size() >= 2 && data.createdAtLabel.size() <= 40
+        && data.installments is list && data.installments.size() >= 1 && data.installments.size() <= 12 && data.installments[0] is map
+        && (!('applicantDetails' in data) || data.applicantDetails is map)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCoupon(data, userId, couponId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'title', 'description', 'discountAmount',
+          'categoryFilter', 'expiresAt', 'status', 'code', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'title', 'description', 'discountAmount',
+          'categoryFilter', 'expiresAt', 'status', 'code', 'createdAt', 'updatedAt'
+        ])
+        && data.id == couponId
+        && data.ownerId == userId
+        && isValidId(data.id)
+        && isValidId(data.ownerId)
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 120
+        && data.description is string && data.description.size() >= 2 && data.description.size() <= 220
+        && data.discountAmount is number && data.discountAmount >= 0 && data.discountAmount <= 500
+        && data.categoryFilter in ['avicola', 'porcicola', 'mixto', 'capital', 'all']
+        && data.expiresAt is string && data.expiresAt.size() >= 2 && data.expiresAt.size() <= 40
+        && data.status in ['available', 'used', 'expired']
+        && data.code is string && data.code.size() >= 2 && data.code.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'businessName', 'businessType', 'zone', 'coldChain', 'points', 'tierName', 'updatedAt'
+        ]);
+
+      match /private/info {
+        allow get: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidPrivateInfo(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidPrivateInfo(incoming(), userId)
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName', 'dni', 'address', 'seniority', 'phone', 'email', 'updatedAt'
+          ]);
+      }
+
+      match /credits/{creditId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(creditId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(creditId)
+          && isValidCredit(incoming(), userId, creditId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(creditId)
+          && existing().status != 'completed'
+          && isValidCredit(incoming(), userId, creditId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'installments', 'paidInstallments', 'paidAmount', 'remainingAmount',
+            'nextDueDate', 'status', 'coldChainInsured', 'updatedAt'
+          ]);
+      }
+
+      match /coupons/{couponId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(couponId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(couponId)
+          && isValidCoupon(incoming(), userId, couponId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(couponId)
+          && existing().status == 'available'
+          && isValidCoupon(incoming(), userId, couponId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      }
+    }
+  }
+}
